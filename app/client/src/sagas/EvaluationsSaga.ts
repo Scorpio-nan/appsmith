@@ -12,11 +12,10 @@ import {
 } from "redux-saga/effects";
 
 import type {
-  EvaluationReduxAction,
   ReduxAction,
   ReduxActionType,
   AnyReduxAction,
-} from "ee/constants/ReduxActionConstants";
+} from "actions/ReduxActionTypes";
 import { ReduxActionTypes } from "ee/constants/ReduxActionConstants";
 import {
   getDataTree,
@@ -25,7 +24,7 @@ import {
 import { getMetaWidgets, getWidgets, getWidgetsMeta } from "sagas/selectors";
 import type { WidgetTypeConfigMap } from "WidgetProvider/factory";
 import WidgetFactory from "WidgetProvider/factory";
-import { GracefulWorkerService } from "utils/WorkerUtil";
+import { evalWorker } from "utils/workerInstances";
 import type { EvalError, EvaluationError } from "utils/DynamicBindingUtils";
 import { PropertyEvaluationErrorType } from "utils/DynamicBindingUtils";
 import { EVAL_WORKER_ACTIONS } from "ee/workers/Evaluation/evalWorkerActions";
@@ -94,13 +93,16 @@ import type {
 import type { ActionDescription } from "ee/workers/Evaluation/fns";
 import { handleEvalWorkerRequestSaga } from "./EvalWorkerActionSagas";
 import { getAppsmithConfigs } from "ee/configs";
-import { executeJSUpdates } from "actions/pluginActionActions";
+import {
+  type actionDataPayload,
+  type updateActionDataPayloadType,
+} from "actions/pluginActionActions";
+import { executeJSUpdates } from "actions/jsPaneActions";
 import { setEvaluatedActionSelectorField } from "actions/actionSelectorActions";
 import { waitForWidgetConfigBuild } from "./InitSagas";
 import { logDynamicTriggerExecution } from "ee/sagas/analyticsSaga";
 import { selectFeatureFlags } from "ee/selectors/featureFlagsSelectors";
 import { fetchFeatureFlagsInit } from "actions/userActions";
-import type { AffectedJSObjects } from "./EvaluationsSagaUtils";
 import {
   getAffectedJSObjectIdsFromAction,
   parseUpdatesAndDeleteUndefinedUpdates,
@@ -109,7 +111,7 @@ import { getFeatureFlagsFetched } from "selectors/usersSelectors";
 import { getIsCurrentEditorWorkflowType } from "ee/selectors/workflowSelectors";
 import { evalErrorHandler } from "./EvalErrorHandler";
 import AnalyticsUtil from "ee/utils/AnalyticsUtil";
-import { endSpan, startRootSpan } from "UITelemetry/generateTraces";
+import { endSpan, startRootSpan } from "instrumentation/generateTraces";
 import { transformTriggerEvalErrors } from "ee/sagas/helpers";
 import {
   getApplicationLastDeployedAt,
@@ -117,20 +119,12 @@ import {
   getCurrentPageId,
 } from "selectors/editorSelectors";
 import { getInstanceId } from "ee/selectors/tenantSelectors";
+import type {
+  AffectedJSObjects,
+  EvaluationReduxAction,
+} from "actions/EvaluationReduxActionTypes";
 
 const APPSMITH_CONFIGS = getAppsmithConfigs();
-
-export const evalWorker = new GracefulWorkerService(
-  new Worker(
-    new URL("../workers/Evaluation/evaluation.worker.ts", import.meta.url),
-    {
-      type: "module",
-      // Note: the `Worker` part of the name is slightly important – LinkRelPreload_spec.js
-      // relies on it to find workers in the list of all requests.
-      name: "evalWorker",
-    },
-  ),
-);
 
 let widgetTypeConfigMap: WidgetTypeConfigMap;
 
@@ -495,7 +489,7 @@ export function* executeJSFunction(
   // After every function execution, log execution errors if present
   yield call(handleJSFunctionExecutionErrorLog, action, collection, errors);
 
-  return { result, isDirty };
+  return { result, isDirty, errors };
 }
 
 export // TODO: Fix this the next time the file is edited
@@ -547,8 +541,19 @@ export const defaultAffectedJSObjects: AffectedJSObjects = {
   isAllAffected: false,
   ids: [],
 };
+
+interface BUFFERED_ACTION {
+  hasDebouncedHandleUpdate: boolean;
+  hasBufferedAction: boolean;
+  actionDataPayloadConsolidated: actionDataPayload[];
+}
+
 export function evalQueueBuffer() {
   let canTake = false;
+  let hasDebouncedHandleUpdate = false;
+  let hasBufferedAction = false;
+  let actionDataPayloadConsolidated: actionDataPayload = [];
+
   // TODO: Fix this the next time the file is edited
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let collectedPostEvalActions: any = [];
@@ -563,8 +568,19 @@ export function evalQueueBuffer() {
 
       collectedAffectedJSObjects = defaultAffectedJSObjects;
       canTake = false;
+      const actionDataPayloadConsolidatedRes = actionDataPayloadConsolidated;
+
+      const hasDebouncedHandleUpdateRes = hasDebouncedHandleUpdate;
+      const hasBufferedActionRes = hasBufferedAction;
+
+      actionDataPayloadConsolidated = [];
+      hasDebouncedHandleUpdate = false;
+      hasBufferedAction = false;
 
       return {
+        hasDebouncedHandleUpdate: hasDebouncedHandleUpdateRes,
+        hasBufferedAction: hasBufferedActionRes,
+        actionDataPayloadConsolidated: actionDataPayloadConsolidatedRes,
         postEvalActions: resp,
         affectedJSObjects,
         type: ReduxActionTypes.BUFFERED_ACTION,
@@ -583,6 +599,25 @@ export function evalQueueBuffer() {
     if (!shouldProcessAction(action)) {
       return;
     }
+
+    if (action.type === ReduxActionTypes.UPDATE_ACTION_DATA) {
+      const { actionDataPayload } =
+        action.payload as updateActionDataPayloadType;
+
+      if (actionDataPayload && actionDataPayload.length) {
+        actionDataPayloadConsolidated = [
+          ...actionDataPayloadConsolidated,
+          ...actionDataPayload,
+        ];
+      }
+
+      hasDebouncedHandleUpdate = true;
+      canTake = true;
+
+      return;
+    }
+
+    hasBufferedAction = true;
 
     canTake = true;
     // extract the affected JS action ids from the action and pass them
@@ -769,16 +804,56 @@ function* evaluationChangeListenerSaga(): any {
     const action: EvaluationReduxAction<unknown | unknown[]> =
       yield take(evtActionChannel);
 
-    // We are dequing actions from the buffer and inferring the JS actions affected by each
-    // action. Through this we know ahead the nodes we need to specifically diff, thereby improving performance.
-    const affectedJSObjects = getAffectedJSObjectIdsFromAction(action);
+    const { payload, type } = action;
 
-    yield call(evalAndLintingHandler, true, action, {
-      shouldReplay: get(action, "payload.shouldReplay"),
-      forceEvaluation: shouldForceEval(action),
-      requiresLogging: shouldLog(action),
-      affectedJSObjects,
-    });
+    if (type === ReduxActionTypes.UPDATE_ACTION_DATA) {
+      yield call(
+        evalWorker.request,
+        EVAL_WORKER_ACTIONS.UPDATE_ACTION_DATA,
+        (payload as updateActionDataPayloadType).actionDataPayload,
+      );
+      continue;
+    }
+
+    if (type !== ReduxActionTypes.BUFFERED_ACTION) {
+      const affectedJSObjects = getAffectedJSObjectIdsFromAction(action);
+
+      yield call(evalAndLintingHandler, true, action, {
+        shouldReplay: get(action, "payload.shouldReplay"),
+        forceEvaluation: shouldForceEval(action),
+        requiresLogging: shouldLog(action),
+        affectedJSObjects,
+      });
+      continue;
+    }
+
+    // all buffered debounced actions are handled here
+    const {
+      actionDataPayloadConsolidated,
+      hasBufferedAction,
+      hasDebouncedHandleUpdate,
+    } = action as unknown as BUFFERED_ACTION;
+
+    if (hasDebouncedHandleUpdate) {
+      yield call(
+        evalWorker.request,
+        EVAL_WORKER_ACTIONS.UPDATE_ACTION_DATA,
+        actionDataPayloadConsolidated,
+      );
+    }
+
+    if (hasBufferedAction) {
+      // We are dequing actions from the buffer and inferring the JS actions affected by each
+      // action. Through this we know ahead the nodes we need to specifically diff, thereby improving performance.
+      const affectedJSObjects = getAffectedJSObjectIdsFromAction(action);
+
+      yield call(evalAndLintingHandler, true, action, {
+        shouldReplay: get(action, "payload.shouldReplay"),
+        forceEvaluation: shouldForceEval(action),
+        requiresLogging: shouldLog(action),
+        affectedJSObjects,
+      });
+    }
   }
 }
 
@@ -901,5 +976,3 @@ export default function* evaluationSagaListeners() {
     }
   }
 }
-
-export { evalWorker as EvalWorker };

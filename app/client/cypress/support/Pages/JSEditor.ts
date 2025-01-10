@@ -16,6 +16,7 @@ export interface ICreateJSObjectOptions {
   prettify?: boolean;
   isPackages?: boolean;
 }
+
 const DEFAULT_CREATE_JS_OBJECT_OPTIONS = {
   paste: true,
   completeReplace: false,
@@ -35,6 +36,7 @@ export class JSEditor {
   public settingsTriggerLocator = "[data-testid='t--js-settings-trigger']";
   public contextMenuTriggerLocator = "[data-testid='t--more-action-trigger']";
   public runFunctionSelectLocator = "[data-testid='t--js-function-run']";
+  public listOfJsObjects = "[data-testid='t--tabs-container']>div>span";
 
   public toolbar = new PluginEditorToolbar(
     this.runButtonLocator,
@@ -88,6 +90,9 @@ export class JSEditor {
     "//div[@data-testid='t--query-run-confirmation-modal']//span[text()='" +
     text +
     "']";
+  _addJSObj = '[data-testid="t--ide-tabs-add-button"]';
+  _jsPageActions = ".entity-context-menu";
+  _moreActions = '[data-testid="t--more-action-trigger"]';
   //#endregion
 
   //#region constants
@@ -229,6 +234,13 @@ export class JSEditor {
     PageLeftPane.assertPresence(renameVal);
   }
 
+  public RenameJSObjectFromContextMenu(renameVal: string) {
+    cy.get(this.contextMenuTriggerLocator).click();
+    cy.contains("Rename").should("be.visible").click();
+    cy.get(this._jsObjTxt).clear().type(renameVal, { force: true }).blur();
+    PageLeftPane.assertPresence(renameVal);
+  }
+
   public RenameJSObjFromExplorer(entityName: string, renameVal: string) {
     this.ee.ActionContextMenuByEntityName({
       entityNameinLeftSidebar: entityName,
@@ -295,14 +307,18 @@ export class JSEditor {
   }
 
   /**
-  There are two types of parse errors in the JS Editor
-  1. Parse errors that render the JS Object invalid and all functions unrunnable
-  2. Parse errors within functions that throw errors when executing those functions
- */
+   There are two types of parse errors in the JS Editor
+   1. Parse errors that render the JS Object invalid and all functions unrunnable
+   2. Parse errors within functions that throw errors when executing those functions
+   */
   public AssertParseError(exists: boolean) {
     const { _jsObjectParseErrorCallout } = this;
     // Assert presence/absence of parse error
     cy.get(_jsObjectParseErrorCallout).should(exists ? "exist" : "not.exist");
+
+    if (exists) {
+      cy.get(_jsObjectParseErrorCallout).contains("Function failed to execute");
+    }
   }
 
   public SelectFunctionDropdown(funName: string) {
@@ -331,5 +347,7 @@ export class JSEditor {
       ); //Asserting NO is not clicked
   }
 
-  //#endregion
+  public currentJSObjectName(): Cypress.Chainable<string> {
+    return cy.get(this._jsObjName).invoke("text");
+  }
 }

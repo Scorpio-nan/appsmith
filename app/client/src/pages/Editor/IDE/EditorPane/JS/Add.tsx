@@ -2,22 +2,25 @@ import React, { useCallback, useState } from "react";
 import SegmentAddHeader from "../components/SegmentAddHeader";
 import { EDITOR_PANE_TEXTS, createMessage } from "ee/constants/messages";
 import type { ListItemProps } from "@appsmith/ads";
-import { Flex, SearchInput } from "@appsmith/ads";
+import {
+  EntityGroupsList,
+  Flex,
+  SearchInput,
+  NoSearchResults,
+} from "@appsmith/ads";
 import { useDispatch, useSelector } from "react-redux";
 import { getCurrentPageId } from "selectors/editorSelectors";
-import GroupedList from "../components/GroupedList";
 import {
   useGroupedAddJsOperations,
   useJSAdd,
 } from "ee/pages/Editor/IDE/EditorPane/JS/hooks";
 import type { ActionOperation } from "components/editorComponents/GlobalSearch/utils";
-import { createAddClassName, fuzzySearchInObjectItems } from "../utils";
+import { createAddClassName } from "../utils";
 import { FocusEntity } from "navigation/FocusEntity";
-import type { GroupedListProps } from "../components/types";
-import { EmptySearchResult } from "../components/EmptySearchResult";
 import { getIDEViewMode } from "selectors/ideSelectors";
 import type { FlexProps } from "@appsmith/ads";
 import { EditorViewMode } from "ee/entities/IDE/constants";
+import { filterEntityGroupsBySearchTerm } from "IDE/utils";
 
 const AddJS = () => {
   const dispatch = useDispatch();
@@ -49,21 +52,21 @@ const AddJS = () => {
           : "",
       descriptionType: "inline",
       onClick: onCreateItemClick.bind(null, data),
-      wrapperClassName: createAddClassName(title),
+      className: createAddClassName(title),
     } as ListItemProps;
   };
 
-  const groups = groupedJsOperations.map(
+  const itemGroups = groupedJsOperations.map(
     ({ className, operations, title }) => ({
-      groupTitle: title,
+      groupTitle: title || "",
       className: className,
       items: operations.map(getListItems),
     }),
   );
 
-  const localGroups = fuzzySearchInObjectItems<GroupedListProps[]>(
+  const filteredItemGroups = filterEntityGroupsBySearchTerm(
     searchTerm,
-    groups,
+    itemGroups,
   );
 
   const extraPadding: FlexProps =
@@ -94,10 +97,15 @@ const AddJS = () => {
           titleMessage={EDITOR_PANE_TEXTS.js_create_tab_title}
         />
         <SearchInput onChange={setSearchTerm} value={searchTerm} />
-        {localGroups.length > 0 ? <GroupedList groups={localGroups} /> : null}
-        {localGroups.length === 0 && searchTerm !== "" ? (
-          <EmptySearchResult
-            type={createMessage(EDITOR_PANE_TEXTS.search_objects.jsObject)}
+        {filteredItemGroups.length > 0 ? (
+          <EntityGroupsList groups={filteredItemGroups} showDivider />
+        ) : null}
+        {filteredItemGroups.length === 0 && searchTerm !== "" ? (
+          <NoSearchResults
+            text={createMessage(
+              EDITOR_PANE_TEXTS.empty_search_result,
+              createMessage(EDITOR_PANE_TEXTS.search_objects.jsObject),
+            )}
           />
         ) : null}
       </Flex>
