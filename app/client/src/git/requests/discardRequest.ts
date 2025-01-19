@@ -1,9 +1,10 @@
 import Api from "api/Api";
 import { GIT_BASE_URL } from "./constants";
-import type { AxiosResponse } from "axios";
+import type { AxiosPromise } from "axios";
+import type { DiscardResponse } from "./discardRequest.types";
 
 export default async function discardRequest(
   branchedApplicationId: string,
-): Promise<AxiosResponse<void>> {
+): AxiosPromise<DiscardResponse> {
   return Api.put(`${GIT_BASE_URL}/discard/app/${branchedApplicationId}`);
 }

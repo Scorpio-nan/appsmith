@@ -1,8 +1,9 @@
-export interface FetchStatusRequestParams {
-  compareRemote: boolean;
-}
+import type { ApiResponse } from "api/types";
 
-export interface FetchStatusResponse {
+export interface FetchStatusRequestParams {
+  compareRemote?: boolean;
+}
+export interface FetchStatusResponseData {
   added: string[];
   aheadCount: number;
   behindCount: number;
@@ -23,10 +24,10 @@ export interface FetchStatusResponse {
   modifiedDatasources: number;
   modifiedJSLibs: number;
   modifiedJSObjects: number;
-  modifiedModuleInstances: number;
-  modifiedModules: number;
   modifiedPages: number;
   modifiedQueries: number;
+  modifiedSourceModules: number;
+  modifiedModuleInstances: number;
   pagesAdded: string[];
   pagesModified: string[];
   pagesRemoved: string[];
@@ -36,3 +37,5 @@ export interface FetchStatusResponse {
   remoteBranch: string;
   removed: string[];
 }
+
+export type FetchStatusResponse = ApiResponse<FetchStatusResponseData>;

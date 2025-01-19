@@ -1,8 +1,10 @@
 package com.appsmith.server.git.dtos;
 
+import com.appsmith.external.git.constants.ce.RefType;
 import com.appsmith.server.constants.ArtifactType;
-import com.appsmith.server.constants.ce.RefType;
+import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 // TODO: Find a better name for this DTO
 
@@ -11,6 +13,8 @@ import lombok.Data;
  * this is also responsible for traversing paths for fs ops
  */
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class ArtifactJsonTransformationDTO {
 
     String workspaceId;
@@ -24,4 +28,10 @@ public class ArtifactJsonTransformationDTO {
     ArtifactType artifactType;
 
     RefType refType;
+
+    public ArtifactJsonTransformationDTO(String workspaceId, String baseArtifactId, String repoName) {
+        this.workspaceId = workspaceId;
+        this.baseArtifactId = baseArtifactId;
+        this.repoName = repoName;
+    }
 }

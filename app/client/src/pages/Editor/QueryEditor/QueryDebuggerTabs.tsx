@@ -12,17 +12,17 @@ import {
 } from "ee/constants/messages";
 import DebuggerLogs from "components/editorComponents/Debugger/DebuggerLogs";
 import ErrorLogs from "components/editorComponents/Debugger/Errors";
-import { Datasource } from "PluginActionEditor/components/PluginActionResponse/components/DatasourceTab";
+import { DatasourceTab } from "PluginActionEditor/components/PluginActionResponse/components/DatasourceTab";
 import type { ActionResponse } from "api/ActionAPI";
 import type { SourceEntity } from "entities/AppsmithConsole";
 import type { Action } from "entities/Action";
-import QueryResponseTab from "PluginActionEditor/components/PluginActionResponse/components/QueryResponseTab";
+import { Response } from "PluginActionEditor/components/PluginActionResponse/components/Response";
 import {
   getDatasource,
   getDatasourceStructureById,
   getPluginDatasourceComponentFromId,
 } from "ee/selectors/entitiesSelector";
-import { DatasourceComponentTypes } from "api/PluginApi";
+import { DatasourceComponentTypes } from "entities/Plugin";
 import { fetchDatasourceStructure } from "actions/datasourceActions";
 import { DatasourceStructureContext } from "entities/Datasource";
 import {
@@ -33,6 +33,7 @@ import { actionResponseDisplayDataFormats } from "../utils";
 import { getIDEViewMode } from "selectors/ideSelectors";
 import { EditorViewMode } from "ee/entities/IDE/constants";
 import { IDEBottomView, ViewHideBehaviour } from "IDE";
+import { EditorTheme } from "components/editorComponents/CodeEditor/EditorConfig";
 
 interface QueryDebuggerTabsProps {
   actionSource: SourceEntity;
@@ -49,12 +50,10 @@ interface QueryDebuggerTabsProps {
 function QueryDebuggerTabs({
   actionName,
   actionResponse,
-  actionSource,
   currentActionConfig,
   isRunDisabled = false,
   isRunning,
   onRunClick,
-  runErrorMessage,
   showSchema,
 }: QueryDebuggerTabsProps) {
   const dispatch = useDispatch();
@@ -184,15 +183,15 @@ function QueryDebuggerTabs({
   if (ideViewMode === EditorViewMode.FullScreen) {
     responseTabs.push(
       {
+        key: DEBUGGER_TAB_KEYS.LOGS_TAB,
+        title: createMessage(DEBUGGER_LOGS),
+        panelComponent: <DebuggerLogs searchQuery={actionName} />,
+      },
+      {
         key: DEBUGGER_TAB_KEYS.ERROR_TAB,
         title: createMessage(DEBUGGER_ERRORS),
         count: errorCount,
         panelComponent: <ErrorLogs />,
-      },
-      {
-        key: DEBUGGER_TAB_KEYS.LOGS_TAB,
-        title: createMessage(DEBUGGER_LOGS),
-        panelComponent: <DebuggerLogs searchQuery={actionName} />,
       },
     );
   }
@@ -202,14 +201,14 @@ function QueryDebuggerTabs({
       key: DEBUGGER_TAB_KEYS.RESPONSE_TAB,
       title: createMessage(DEBUGGER_RESPONSE),
       panelComponent: (
-        <QueryResponseTab
-          actionName={actionName}
-          actionSource={actionSource}
-          currentActionConfig={currentActionConfig}
+        <Response
+          action={currentActionConfig}
+          actionResponse={actionResponse}
           isRunDisabled={isRunDisabled}
           isRunning={isRunning}
           onRunClick={onRunClick}
-          runErrorMessage={runErrorMessage}
+          responseTabHeight={responseTabHeight}
+          theme={EditorTheme.LIGHT}
         />
       ),
     });
@@ -220,10 +219,12 @@ function QueryDebuggerTabs({
       key: DEBUGGER_TAB_KEYS.DATASOURCE_TAB,
       title: "Datasource",
       panelComponent: (
-        <Datasource
+        <DatasourceTab
           currentActionId={currentActionConfig.id}
           datasourceId={currentActionConfig.datasource.id || ""}
-          datasourceName={datasource?.name || ""}
+          datasourceName={
+            datasource?.name || currentActionConfig.datasource.name || ""
+          }
         />
       ),
     });

@@ -1,11 +1,16 @@
 package com.appsmith.server.git.central;
 
+import com.appsmith.external.dtos.GitRefDTO;
+import com.appsmith.external.dtos.GitStatusDTO;
+import com.appsmith.external.dtos.MergeStatusDTO;
+import com.appsmith.external.git.dtos.FetchRemoteDTO;
 import com.appsmith.git.dto.CommitDTO;
 import com.appsmith.server.domains.Artifact;
 import com.appsmith.server.domains.GitArtifactMetadata;
 import com.appsmith.server.domains.GitAuth;
 import com.appsmith.server.dtos.ArtifactExchangeJson;
 import com.appsmith.server.dtos.GitConnectDTO;
+import com.appsmith.server.dtos.GitMergeDTO;
 import com.appsmith.server.git.dtos.ArtifactJsonTransformationDTO;
 import reactor.core.publisher.Mono;
 import reactor.util.function.Tuple2;
@@ -39,7 +44,16 @@ public interface GitHandlingServiceCE {
 
     Mono<Boolean> removeRepository(ArtifactJsonTransformationDTO artifactJsonTransformationDTO);
 
+    Mono<List<String>> listBranches(
+            ArtifactJsonTransformationDTO artifactJsonTransformationDTO, Boolean checkRemoteBranches);
+
     Mono<List<String>> listBranches(ArtifactJsonTransformationDTO artifactJsonTransformationDTO);
+
+    Mono<List<String>> listReferences(
+            ArtifactJsonTransformationDTO artifactJsonTransformationDTO, Boolean checkRemoteReferences);
+
+    Mono<String> getDefaultBranchFromRepository(
+            ArtifactJsonTransformationDTO jsonTransformationDTO, GitArtifactMetadata gitArtifactMetadata);
 
     Mono<Boolean> validateEmptyRepository(ArtifactJsonTransformationDTO artifactJsonTransformationDTO);
 
@@ -51,11 +65,36 @@ public interface GitHandlingServiceCE {
 
     Mono<String> createFirstCommit(ArtifactJsonTransformationDTO jsonTransformationDTO, CommitDTO commitDTO);
 
+    // TODO: provide a proper name
     Mono<Boolean> prepareChangesToBeCommitted(
             ArtifactJsonTransformationDTO jsonTransformationDTO, ArtifactExchangeJson artifactExchangeJson);
 
     Mono<Tuple2<? extends Artifact, String>> commitArtifact(
             Artifact branchedArtifact, CommitDTO commitDTO, ArtifactJsonTransformationDTO jsonTransformationDTO);
 
-    Mono<String> fetchRemoteChanges(ArtifactJsonTransformationDTO jsonTransformationDTO, GitAuth gitAuth);
+    Mono<String> fetchRemoteReferences(
+            ArtifactJsonTransformationDTO jsonTransformationDTO, GitAuth gitAuth, Boolean isFetchAll);
+
+    Mono<String> fetchRemoteReferences(
+            ArtifactJsonTransformationDTO jsonTransformationDTO, FetchRemoteDTO fetchRemoteDTO, GitAuth gitAuth);
+
+    Mono<String> mergeBranches(ArtifactJsonTransformationDTO jsonTransformationDTO, GitMergeDTO gitMergeDTO);
+
+    Mono<MergeStatusDTO> isBranchMergable(ArtifactJsonTransformationDTO JsonTransformationDTO, GitMergeDTO gitMergeDTO);
+
+    Mono<? extends ArtifactExchangeJson> recreateArtifactJsonFromLastCommit(
+            ArtifactJsonTransformationDTO jsonTransformationDTO);
+
+    Mono<GitStatusDTO> getStatus(ArtifactJsonTransformationDTO jsonTransformationDTO);
+
+    Mono<String> createGitReference(ArtifactJsonTransformationDTO artifactJsonTransformationDTO, GitRefDTO gitRefDTO);
+
+    Mono<String> checkoutRemoteReference(ArtifactJsonTransformationDTO jsonTransformationDTO);
+
+    Mono<Boolean> deleteGitReference(ArtifactJsonTransformationDTO jsonTransformationDTO);
+
+    Mono<Boolean> checkoutArtifact(ArtifactJsonTransformationDTO jsonTransformationDTO);
+
+    Mono<MergeStatusDTO> pullArtifact(
+            ArtifactJsonTransformationDTO jsonTransformationDTO, GitArtifactMetadata baseMetadata);
 }

@@ -13,7 +13,7 @@ import type { AppState } from "ee/reducers";
 import { connect } from "react-redux";
 import { getPlugin } from "ee/selectors/entitiesSelector";
 import { DB_NOT_SUPPORTED } from "ee/utils/Environments";
-import type { PluginType } from "entities/Action";
+import type { PluginType } from "entities/Plugin";
 import { getDefaultEnvId } from "ee/api/ApiUtils";
 import { EnvConfigSection } from "ee/components/EnvConfigSection";
 import { getCurrentEnvironmentId } from "ee/selectors/environmentSelectors";
@@ -21,6 +21,8 @@ import { isMultipleEnvEnabled } from "ee/utils/planHelpers";
 import { selectFeatureFlags } from "ee/selectors/featureFlagsSelectors";
 import { Text } from "@appsmith/ads";
 import { Table } from "@appsmith/ads-old";
+import type { FeatureFlags } from "ee/entities/FeatureFlag";
+import { RagDocuments } from "ee/components/formControls/RagDocuments";
 
 const Key = styled.div`
   color: var(--ads-v2-color-fg-muted);
@@ -69,6 +71,7 @@ interface RenderDatasourceSectionProps {
   showOnlyCurrentEnv?: boolean;
   currentEnv: string;
   isEnvEnabled: boolean;
+  featureFlags?: FeatureFlags;
 }
 const renderKVArray = (
   // TODO: Fix this the next time the file is edited
@@ -140,6 +143,7 @@ export function renderDatasourceSection(
   currentEnvironment: string,
   datasource: Datasource,
   viewMode: boolean | undefined,
+  featureFlags?: FeatureFlags,
 ) {
   return (
     <React.Fragment key={datasource.id}>
@@ -148,7 +152,7 @@ export function renderDatasourceSection(
           isHidden(
             datasource.datasourceStorages[currentEnvironment],
             section.hidden,
-            undefined,
+            featureFlags,
             viewMode,
           )
         )
@@ -168,6 +172,7 @@ export function renderDatasourceSection(
             currentEnvironment,
             datasource,
             viewMode,
+            featureFlags,
           );
         } else {
           try {
@@ -180,6 +185,18 @@ export function renderDatasourceSection(
             const customConfigProperty =
               `datasourceStorages.${currentEnvironment}.` + configProperty;
             const reactKey = datasource.id + "_" + label;
+
+            if (controlType === "RAG_DOCUMENTS") {
+              return (
+                <RagDocuments
+                  datasourceId={datasource.id}
+                  isDeletedAvailable={false}
+                  isImportDataAvailable={false}
+                  key={reactKey}
+                  workspaceId={datasource.workspaceId}
+                />
+              );
+            }
 
             if (controlType === "FIXED_KEY_INPUT") {
               return (
@@ -320,6 +337,7 @@ class RenderDatasourceInformation extends React.Component<RenderDatasourceSectio
       config,
       currentEnv,
       datasource,
+      featureFlags,
       isEnvEnabled,
       showOnlyCurrentEnv,
       viewMode,
@@ -333,7 +351,13 @@ class RenderDatasourceInformation extends React.Component<RenderDatasourceSectio
         return null;
       }
 
-      return renderDatasourceSection(config, currentEnv, datasource, viewMode);
+      return renderDatasourceSection(
+        config,
+        currentEnv,
+        datasource,
+        viewMode,
+        featureFlags,
+      );
     }
 
     return (
@@ -357,10 +381,12 @@ const mapStateToProps = (state: AppState, ownProps: any) => {
     ? false
     : isMultipleEnvEnabled(selectFeatureFlags(state));
   const currentEnvironmentId = getCurrentEnvironmentId(state);
+  const featureFlags = selectFeatureFlags(state);
 
   return {
     currentEnv: isEnvEnabled ? currentEnvironmentId : getDefaultEnvId(),
     isEnvEnabled,
+    featureFlags,
   };
 };
 
